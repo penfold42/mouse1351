@@ -32,8 +32,10 @@ static volatile uint8_t mode;               ///< mouse mode
 
 void potmouse_init() {
     // Joystick outputs, all to Z and no pullup
-    JOYPORT &= ~(_BV(JOYFIRE) | _BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT)); 
-    JOYDDR  &= ~(_BV(JOYFIRE) | _BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
+    JOYPORT &= ~(_BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT)); 
+    JOYDDR  &= ~(_BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
+    JOYFIREPORT &= ~(_BV(JOYFIRE));
+    JOYFIREDDR  &= ~(_BV(JOYFIRE));
     
     // SID sensing port
     SENSEDDR  &= ~_BV(POTSENSE); // SENSE is input
@@ -43,10 +45,18 @@ void potmouse_init() {
     POTPORT &= ~(_BV(POTX) | _BV(POTY));
     POTDDR  &= ~(_BV(POTX) | _BV(POTY));
 
+#if defined __AVR_ATmega8__
     // prepare INT1
     GICR &= ~_BV(INT1);                     // disable INT1
     MCUCR &= ~(_BV(ISC11)|_BV(ISC10));  
     MCUCR |= _BV(ISC11);                    // ISC11:ISC10 == 10, @negedge   
+#elif defined __AVR_ATmega328P__
+    EIMSK &= ~_BV(INT1);                     // disable INT1
+    EICRA &= ~(_BV(ISC11)|_BV(ISC10));
+    EICRA |= _BV(ISC11);                    // ISC11:ISC10 == 10, @negedge
+#else
+# error unknown chip
+#endif
     
     mode = POTMOUSE_C1351;
 }
@@ -64,15 +74,26 @@ void potmouse_start(uint8_t m) {
             POTDDR  |= _BV(POTX) | _BV(POTY);   // enable POTX/POTY as outputs
             POTPORT |= _BV(POTX) | _BV(POTY);   // output "1" on both
             
+#if defined __AVR_ATmega8__
             GIFR |= _BV(INTF1);                     // clear INT1 flag
-            GICR |= _BV(INT1);                      // enable INT1
+           GICR |= _BV(INT1);                      // enable INT1
+#elif defined __AVR_ATmega328P__
+            EIFR |= _BV(INTF1);                     // clear INT1 flag
+            EIMSK |= _BV(INT1);                      // enable INT1
+#else
+# error unknown chip
+#endif
             break;
+		case POTMOUSE_PC_JOYSTICK:
         case POTMOUSE_JOYSTICK:
             // Joystick emulation
             // close directional pins for ~20ms while there is movement
             TCCR1B = 0;
             TCCR1A = 0;
             
+            POTPORT  &= ~(_BV(POTX));   // enable POTX output for right button
+//            POTDDR  |= _BV(POTX);   // enable POTX output for right button
+
             break;
     }
 }
@@ -82,10 +103,12 @@ void potmouse_movt(int16_t dx, int16_t dy, uint8_t button) {
     
     switch (mode) {
         case POTMOUSE_C1351:
+
+			JOYDDR  &= ~(_BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
             potmouse_xcounter = (potmouse_xcounter + dx) & 077; // modulo 64
             potmouse_ycounter = (potmouse_ycounter + dy) & 077;
         
-            (button & 001) ? (JOYDDR |= _BV(JOYFIRE)) : (JOYDDR &= ~_BV(JOYFIRE));
+            (button & 001) ? (JOYFIREDDR |= _BV(JOYFIRE)) : (JOYFIREDDR &= ~_BV(JOYFIRE));
             (button & 002) ? (JOYDDR |= _BV(JOYUP))   : (JOYDDR &= ~_BV(JOYUP));
             (button & 004) ? (JOYDDR |= _BV(JOYDOWN)) : (JOYDDR &= ~_BV(JOYDOWN));
             
@@ -98,20 +121,30 @@ void potmouse_movt(int16_t dx, int16_t dy, uint8_t button) {
             ocr1b_load = b;
             break;
         case POTMOUSE_JOYSTICK:
-            JOYDDR  &= ~(_BV(JOYFIRE) | _BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
+		case POTMOUSE_PC_JOYSTICK:
+//            JOYDDR  &= ~(_BV(JOYFIRE) | _BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
+            JOYDDR  &= ~(_BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
 
             (dx < 0) ? (JOYDDR |= _BV(JOYLEFT)) : (JOYDDR &= ~_BV(JOYLEFT));
             (dx > 0) ? (JOYDDR |= _BV(JOYRIGHT)): (JOYDDR &= ~_BV(JOYRIGHT));
             (dy < 0) ? (JOYDDR |= _BV(JOYDOWN)) : (JOYDDR &= ~_BV(JOYDOWN));
             (dy > 0) ? (JOYDDR |= _BV(JOYUP))   : (JOYDDR &= ~_BV(JOYUP));
-            (button & 001) ? (JOYDDR |= _BV(JOYFIRE)) : (JOYDDR &= ~_BV(JOYFIRE));
+            (button & 001) ? (JOYFIREDDR |= _BV(JOYFIRE)) : (JOYFIREDDR &= ~_BV(JOYFIRE));
             (button & 002) ? (POTDDR |= _BV(POTX)) : (POTDDR &= ~_BV(POTX));
   
             TCNT1 = 65535-256;
             TCCR1A = 0;
             TCCR1B = _BV(CS12)|_BV(CS10);
+
+#if defined __AVR_ATmega8__
             TIFR |= _BV(TOV1);
             TIMSK |= _BV(TOIE1);
+#elif defined __AVR_ATmega328P__
+            TIFR1 |= _BV(TOV1);
+            TIMSK1 |= _BV(TOIE1);
+#else
+# error unknown chip
+#endif
             break;
     }
 }
@@ -147,7 +180,14 @@ ISR(INT1_vect) {
     // 1. set output compare to clear OC1A/OC1B ("10" in table 37 on page 97)
     TCCR1A = _BV(COM1A1) | _BV(COM1B1);
     // 2. force output compare to make it happen
+
+#if defined __AVR_ATmega8__
     TCCR1A |= _BV(FOC1A) | _BV(FOC1B);
+#elif defined __AVR_ATmega328P__
+    TCCR1C |= _BV(FOC1A) | _BV(FOC1B);
+#else
+# error unknown chip
+#endif
 
     // Set OC1A/OC1B on Compare Match (Set output to high level) 
     // WGM13:0 = 00, normal mode: count from BOTTOM to MAX
@@ -168,9 +208,16 @@ ISR(INT1_vect) {
 ///
 /// Ends joystick emulator pulse.
 ISR(TIMER1_OVF_vect) {
-    JOYDDR  &= ~(_BV(JOYFIRE) | _BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
-    POTDDR  &= ~_BV(POTX);
+//    JOYDDR  &= ~(_BV(JOYFIRE) | _BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
+    JOYDDR  &= ~(_BV(JOYUP) | _BV(JOYDOWN) | _BV(JOYLEFT) | _BV(JOYRIGHT));
+//    POTDDR  &= ~_BV(POTX);
+
+#if defined __AVR_ATmega8__
     TIMSK &= ~_BV(TOIE1);
+#elif defined __AVR_ATmega328P__
+    TIMSK1 &= ~_BV(TOIE1);
+#else
+# error unknown chip
+#endif
 }
 
-//$Id$

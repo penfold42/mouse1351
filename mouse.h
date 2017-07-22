@@ -48,21 +48,23 @@ typedef union _mouse_movt {
         uint8_t bits;               ///< yovf,xovf,ysgn,xsgn,1,b3,b2,b1
         uint8_t dx;                 ///< delta x lsb
         uint8_t dy;                 ///< delta y lsb
+        uint8_t dz;                 ///< delta z lsb
     } fields;
     
-    uint8_t byte[3];                ///< all 3 bytes raw
+    uint8_t byte[4];                ///< all 3 bytes raw
 } MouseMovt;
 
 /// Decoded mouse movement: signed dx and dy, buttons state
 typedef struct _decoded_movt {
     int16_t dx;                     ///< delta x: -256..255
     int16_t dy;                     ///< delta y: -256..255
+    int16_t dz;                     ///< delta z: -256..255
     uint8_t buttons;                ///< buttons status
 } DecodedMovt;
 
 /// \brief Boot mouse, check and return initial button state.
 /// \return initial button status (bits 2,1,0 == left,middle,right)
-uint8_t mouse_boot();
+int8_t mouse_boot();
 
 /// \brief Set mouse resolution
 /// \param res resolution code
@@ -74,4 +76,3 @@ void mouse_setres(uint8_t res);
 
 #endif
 
-//$Id$

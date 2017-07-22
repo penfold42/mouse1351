@@ -1,11 +1,12 @@
 VERSION		   = 0.11
 PRG            = mouse
-OBJ            = main.o mouse.o usrat.o ioconfig.o ps2.o c1351.o tdelay.o
-MCU_TARGET     = atmega8
+OBJ            = ADCpot.o eeprom_code.o main.o mouse.o usrat.o ioconfig.o ps2.o c1351.o 
+MCU_TARGET     = atmega328p
+#MCU_TARGET    = atmega8
 OPTIMIZE       = -O2
-BUILDNUM       = $(shell cat buildnum)
+VARIANT		= 1
 
-DEFS           = -DF_CPU=8000000L -DMCU_TARGET=$(MCU_TARGET) -DVERSION=\"$(VERSION)\" -DBUILDNUM=\"$(BUILDNUM)\"
+DEFS           = -DCONFIG_HARDWARE_VARIANT=${VARIANT} -DF_CPU=8000000L -DMCU_TARGET=$(MCU_TARGET) -DVERSION=\"$(VERSION)\"
 LIBS           =
 
 # You should not have to change anything below here.
@@ -14,7 +15,7 @@ CC             = avr-gcc
 
 # Override is only needed by avr-lib build system.
 
-override CFLAGS        = -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS)
+override CFLAGS        = -std=c11 -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS)
 override LDFLAGS       = -Wl,-Map,$(PRG).map
 
 OBJCOPY        = avr-objcopy
@@ -29,7 +30,6 @@ buildnum:	./buildcount.sh
 	./buildcount.sh
 
 $(PRG).elf: $(OBJ)
-	BUILDNUM=$(shell ./buildcount.sh)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 clean:

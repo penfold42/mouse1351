@@ -70,8 +70,16 @@ void ps2_init() {
     rx_tail = 0;
     ps2_enable_recv(0);
     
+#if defined __AVR_ATmega8__
     MCUCR |= _BV(ISC01); // falling edge for INT00
     TIMSK &= ~_BV(TOIE0);
+#elif defined __AVR_ATmega328P__
+    EICRA|= _BV(ISC01); // falling edge for INT00
+    TIMSK0 &= ~_BV(TOIE0);
+#else
+# error unknown chip
+#endif
+
 }
 
 /// Begin error recovery: disable reception and wait for timer interrupt
@@ -79,9 +87,16 @@ void ps2_recover() {
     if (state == ERROR) {
         ps2_enable_recv(0);
         TCNT0 = 255-35; // approx 1ms
-        TIMSK |= _BV(TOIE0);
 
+#if defined __AVR_ATmega8__
+        TIMSK |= _BV(TOIE0);
         TCCR0 = 4;  // enable: clk/256
+#elif defined __AVR_ATmega328P__
+        TIMSK0 |= _BV(TOIE0);
+        TCCR0B = 4;  // enable: clk/256
+#else
+# error unknown chip
+#endif
     }
 }
 
@@ -90,11 +105,27 @@ void ps2_enable_recv(uint8_t enable) {
         state = IDLE;
         ps2_dir(1,1);
         // enable INT0 interruptt
+
+#if defined __AVR_ATmega8__
         GIFR |= _BV(INTF0);
         GICR |= _BV(INT0);
+#elif defined __AVR_ATmega328P__
+        EIFR |= _BV(INTF0);
+        EIMSK |= _BV(INT0);
+#else
+# error unknown chip
+#endif
     } else {
         // disable INT0, then everything else
+
+#if defined __AVR_ATmega8__
         GICR &= ~_BV(INT0);
+#elif defined __AVR_ATmega328P__
+        EIMSK &= ~_BV(INT0);
+#else
+# error unknown chip
+#endif
+
         ps2_clk(0);
         ps2_dir(1,0);
     }
@@ -118,6 +149,7 @@ uint8_t ps2_avail() {
 } 
 
 uint8_t ps2_getbyte() {
+	LEDPORT &= ~(1<<LED_PWR);	// turn off power led
 	uint8_t result = rx_buf[rx_tail];
 	rx_tail = (rx_tail + 1) % PS2_RXBUF_LEN;
 	
@@ -135,8 +167,16 @@ void ps2_sendbyte(uint8_t byte) {
     
     // 128us
     TCNT0 = 255-4; 
+
+#if defined __AVR_ATmega8__
     TIMSK |= _BV(TOIE0);
     TCCR0 = 4;
+#elif defined __AVR_ATmega328P__
+    TIMSK0 |= _BV(TOIE0);
+    TCCR0B = 4;
+#else
+# error unknown chip
+#endif
     
     while (state != IDLE);
 }
@@ -220,9 +260,18 @@ ISR(INT0_vect, ISR_NOBLOCK) {
                 state = TX_END;                
 
                 waitcnt = 50;           // after 100us it's an error
+#if defined __AVR_ATmega8__
                 TIMSK |= _BV(TOIE0);    // enable TMR0 interrupt
                 TCNT0 = 255-2;              // 4 counts: 2us
                 TCCR0 = 2;              // prescaler = f/8: go!
+#elif defined __AVR_ATmega328P__
+                TIMSK0 |= _BV(TOIE0);    // enable TMR0 interrupt
+                TCNT0 = 255-2;              // 4 counts: 2us
+                TCCR0B = 2;              // prescaler = f/8: go!
+#else
+# error unknown chip
+#endif
+
             }
             break;
         case TX_END:
@@ -243,16 +292,33 @@ ISR(TIMER0_OVF_vect) {
             ps2_enable_recv(1);
             
             // stop timer
+#if defined __AVR_ATmega8__
             TIMSK &= ~_BV(TOIE0);
             TCCR0 = 0;
+#elif defined __AVR_ATmega328P__
+            TIMSK0 &= ~_BV(TOIE0);
+            TCCR0B = 0;
+#else
+# error unknown chip
+#endif
+
             break;
         case TX_REQ0:
             // load the timer to serve as a watchdog
             // after 20 barks this is an error
             barkcnt = 20;
+#if defined __AVR_ATmega8__
             TIMSK |= _BV(TOIE0);    // enable TMR0 interrupt
             TCNT0 = 0;//255;            // 20*255*256/8e6 == 163ms
             TCCR0 = 4;               // prescaler = /256, go!
+#elif defined __AVR_ATmega328P__
+            TIMSK0 |= _BV(TOIE0);    // enable TMR0 interrupt
+            TCNT0 = 0;//255;            // 20*255*256/8e6 == 163ms
+            TCCR0B = 4;               // prescaler = /256, go!
+#else
+# error unknown chip
+#endif
+
 
             // waited for 100us after pulling clock low, pull data low
             ps2_dat(0);
@@ -261,8 +327,16 @@ ISR(TIMER0_OVF_vect) {
             // release the clock line
             ps2_dir(0,1); 
             
-            GIFR |= _BV(INTF0); // clear INT0 flag
-            GICR |= _BV(INT0);  // enable INT0 @(negedge clk)
+
+#if defined __AVR_ATmega8__
+             GIFR |= _BV(INTF0); // clear INT0 flag
+             GICR |= _BV(INT0);  // enable INT0 @(negedge clk)
+#elif defined __AVR_ATmega328P__
+            EIFR |= _BV(INTF0); // clear INT0 flag
+            EIMSK |= _BV(INT0);  // enable INT0 @(negedge clk)
+#else
+# error unknown chip
+#endif
                         
             // see you in INT0 handler
             bits = 8;
@@ -273,8 +347,17 @@ ISR(TIMER0_OVF_vect) {
         case TX_END:
             // wait until both clk and dat are up, that will be all
             if (ps2_clkin() && ps2_datin()) {
+
+#if defined __AVR_ATmega8__
                 TIMSK &= ~_BV(TOIE0);
                 TCCR0 = 0;
+#elif defined __AVR_ATmega328P__
+                TIMSK0 &= ~_BV(TOIE0);
+                TCCR0B = 0;
+#else
+# error unknown chip
+#endif
+
                 state = IDLE;
             } else {
                 if (waitcnt == 0) {
@@ -297,4 +380,4 @@ ISR(TIMER0_OVF_vect) {
     }
 }
 
-//$Id$
+

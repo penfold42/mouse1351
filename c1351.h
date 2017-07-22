@@ -12,8 +12,9 @@
 ///
 /// See potmouse_start()
 enum _potmode {
-    POTMOUSE_C1351 = 0,             //<! proportional mode
-    POTMOUSE_JOYSTICK               //<! joystick mode
+    POTMOUSE_C1351,             //<! proportional mode
+    POTMOUSE_JOYSTICK,               //<! joystick mode
+    POTMOUSE_PC_JOYSTICK               //<! joystick mode
 };
 
 /// Init all C1351-related I/O and interrupts, but don't start yet.
@@ -30,5 +31,3 @@ void potmouse_movt(int16_t dx, int16_t dy, uint8_t button);
 void potmouse_zero(uint16_t zero);
 
 #endif
-
-//$Id$
