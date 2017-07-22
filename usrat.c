@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <avr/io.h>
+#include <avr/interrupt.h>
 
 #include "usrat.h"
 
@@ -11,7 +12,8 @@ static volatile uint8_t rx_buffer_in;
 static volatile uint8_t rx_buffer_out;
 
 //! \brief a stub to use when usart is disabled
-static void uart_non(char data) {
+static int uart_non(char data, FILE* stream) {
+       return 0;
 }
 
 //! \brief Initialize USART, perform fdevopen with uart_putchar.
@@ -30,7 +32,7 @@ void usart_init(uint16_t baudval) {
 	// Enable receiver and transmitter, enable RX complete interrupt
 	UCSRB = (uint8_t)((1<<RXEN) | (1<<TXEN) | (1<<RXCIE));
 
-	(void)fdevopen(uart_putchar, NULL/*, 0*/);
+	(void)fdevopen(uart_putchar, NULL);
 }
 
 //! \brief Disable USART completely
@@ -41,10 +43,10 @@ void usart_stop() {
 
 //! \brief putchar() for USART.
 //! \param data character to print.
-int uart_putchar(char data) {
+int uart_putchar(char data, FILE* stream) {
 	//while (!(UCSRA & (1<<UDRE))) {};
 	if (data == '\n') {
-		(void)uart_putchar('\r');
+		(void)uart_putchar('\r', NULL);
 	}
 
 	//PORTD |= 1<<5;
@@ -79,8 +81,8 @@ uint8_t uart_getc() {
 	return result;
 }
 
-void SIG_UART_RECV( void ) __attribute__ ( ( signal ) );  
-void SIG_UART_RECV( void ) {
+void USART_RXC_vect( void ) __attribute__ ( ( signal ) );  
+void USART_RXC_vect( void ) {
 	rx_buffer[rx_buffer_in] = (uint8_t)UDR;
 	rx_buffer_in = (rx_buffer_in + 1) % RX_BUFFER_SIZE;
 }
